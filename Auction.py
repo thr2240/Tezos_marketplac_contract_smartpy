@@ -279,6 +279,9 @@ class Auction(sp.Contract):
         sp.verify(self.data.mods.contains(sp.sender), "NOT_MODERATOR")
         self.data.pause = ~self.data.pause
 
+sp.add_compilation_target("auction", Auction(
+    mods=[sp.address("tz1XzzMGjiJWVLAsdsqSNjgu7SuPvVw7JjGM")],
+    fund_operator=sp.address("tz1XzzMGjiJWVLAsdsqSNjgu7SuPvVw7JjGM")))
 
 @sp.add_test(name="Auction")
 def test():
