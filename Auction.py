@@ -22,7 +22,8 @@ class ListData:
             creator = sp.TAddress,
             token = t_list_key,
             price = sp.TMutez,
-        ).layout(("creator", ("token", "price")))
+            shares = Share().get_type()
+        )
     
     def get_type(self): return self.type_value
 
@@ -33,6 +34,7 @@ class ListData:
             creator = _params.creator,
             token = _params.token,
             price = _params.price,
+            shares = _params.shares
         )
     
 class AuctionData:
@@ -47,6 +49,7 @@ class AuctionData:
             end_time = sp.TTimestamp,
             current_price = sp.TMutez,
             highest_bidder = sp.TAddress,
+            shares = Share().get_type()
         )
     
     def get_type(self): return self.type_value
@@ -61,6 +64,7 @@ class AuctionData:
             end_time = _params.end_time,
             current_price = _params.current_price,
             highest_bidder = _params.highest_bidder,
+            shares = _params.shares
         )
 
 class Batch_transfer:
@@ -148,6 +152,10 @@ class Auction(sp.Contract):
         sp.set_type(_params, ListData().get_type())
         sp.verify(_params.creator == sp.sender, "INVALID_CREATOR")
         sp.verify(~ self.data.lists.contains(_params.token), "ALREADY_LISTED")
+        total_shares = sp.local("total_shares", self.data.platform_fees)
+        sp.for txn in _params.shares:
+            total_shares.value += txn.amount
+        sp.verify(total_shares.value < 1000000, "INVALID_SHARES")
         self.data.lists[_params.token] = ListData().set_value(_params)
         params = [
                 Batch_transfer.item(from_=sp.sender,
@@ -177,6 +185,9 @@ class Auction(sp.Contract):
         transfer_amount = sp.local("transfer_amount", self.data.lists[params].price)
         sp.send(self.data.fund_operator, sp.split_tokens(transfer_amount.value, self.data.platform_fees, 1000000))
         transfer_amount.value = transfer_amount.value - sp.split_tokens(transfer_amount.value, self.data.platform_fees, 1000000)
+        sp.for txn in self.data.lists[params].shares:
+            sp.send(txn.recipient, sp.split_tokens(transfer_amount.value, txn.amount, 1000000))
+            transfer_amount.value = transfer_amount.value - sp.split_tokens(transfer_amount.value, txn.amount, 1000000)
         sp.send(self.data.lists[params].creator, transfer_amount.value)
         del self.data.lists[params]
         sp.emit(sp.record(token=params,tag="TOKEN_COLLECTED"))
@@ -203,10 +214,10 @@ class Auction(sp.Contract):
         sp.set_type(_params, AuctionData().get_type())
         sp.verify(_params.creator == sp.sender, "INVALID_CREATOR")
         sp.verify(~ self.data.auctions.contains(_params.token), "ALREADY_CREATED")
-        # total_shares = sp.local("total_shares", self.data.platform_fees)
-        # sp.for txn in _params.shares:
-        #     total_shares.value += txn.amount
-        # sp.verify(total_shares.value < 1000000, "INVALID_SHARES")
+        total_shares = sp.local("total_shares", self.data.platform_fees)
+        sp.for txn in _params.shares:
+            total_shares.value += txn.amount
+        sp.verify(total_shares.value < 1000000, "INVALID_SHARES")
         self.data.auctions[_params.token] = AuctionData().set_value(_params)
         params = [
                 Batch_transfer.item(from_=sp.sender,
@@ -267,9 +278,9 @@ class Auction(sp.Contract):
         transfer_amount = sp.local("transfer_amount", self.data.auctions[params].current_price)
         sp.send(self.data.fund_operator, sp.split_tokens(transfer_amount.value, self.data.platform_fees, 1000000))
         transfer_amount.value = transfer_amount.value - sp.split_tokens(transfer_amount.value, self.data.platform_fees, 1000000)
-        # sp.for txn in self.data.auctions[params].shares:
-        #     sp.send(txn.recipient, sp.split_tokens(transfer_amount.value, txn.amount, 1000000))
-        #     transfer_amount.value = transfer_amount.value - sp.split_tokens(transfer_amount.value, txn.amount, 1000000)
+        sp.for txn in self.data.auctions[params].shares:
+            sp.send(txn.recipient, sp.split_tokens(transfer_amount.value, txn.amount, 1000000))
+            transfer_amount.value = transfer_amount.value - sp.split_tokens(transfer_amount.value, txn.amount, 1000000)
         sp.send(sp.sender, transfer_amount.value)
         del self.data.auctions[params]
         sp.emit(sp.record(auction_id=params,tag="AUCTION_SETTLED"))
@@ -319,6 +330,12 @@ def test():
                 token_id = sp.nat(0)
                 ),
             price = sp.tez(1),
+            shares = [
+                sp.record(
+                    amount=2,
+                    recipient=sp.address("KT1TezoooozzSmartPyzzDYNAMiCzzpLu4LU")
+                )
+            ]
         )
     sc += auc.put_on_sale(list_data).run(sender = alice.address)
     
@@ -339,6 +356,12 @@ def test():
             end_time = sp.timestamp(10),
             current_price = sp.tez(0),
             highest_bidder = alice.address,
+            shares = [
+                sp.record(
+                    amount=20000,
+                    recipient=sp.address("KT1TezoooozzSmartPyzzDYNAMiCzzpLu4LU")
+                )
+            ]
         )
     sc += auc.create_auction(auc_data).run(sender = alice.address)
     auc_data = sp.record(
@@ -351,6 +374,12 @@ def test():
             end_time = sp.timestamp(10),
             current_price = sp.tez(0),
             highest_bidder = bob.address,
+            shares = [
+                sp.record(
+                    amount=20000,
+                    recipient=sp.address("KT1TezoooozzSmartPyzzDYNAMiCzzpLu4LU")
+                )
+            ]
         )
     sc += auc.create_auction(auc_data).run(sender = bob.address)
     sc.show([sp.record(contract_balance = auc.balance)])

@@ -144,10 +144,6 @@ class Contract(sp.Contract):
         sp.transfer(data, sp.mutez(0), contractParams)
         sp.emit(sp.record(event="TOKEN_BURNED",burned_by=sp.sender),tag="TOKEN_BURNED")
 
-        
-        
-        
-
 @sp.add_test(name="ContractFactory")
 def test():
     sc = sp.test_scenario()
